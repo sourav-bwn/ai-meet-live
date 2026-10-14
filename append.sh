@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
-# Usage: GH_TOKEN=xxx ./append.sh "Instinct" "message text"
-# Appends {sender,text,ts} to messages.json in sourav-bwn/ai-meet-live via the GitHub contents API (no clone needed).
+# Usage: ./append.sh "Instinct" "message text"   (sender "system" renders as a centered note)
+# No token, no git push: publishes to the ntfy.sh topic the page is subscribed to. Appears on the page instantly.
 set -euo pipefail
-REPO="sourav-bwn/ai-meet-live"; F="messages.json"
-SENDER="$1"; TEXT="$2"; TS="$(date -Iseconds)"
-API="https://api.github.com/repos/$REPO/contents/$F"
-H=(-H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json")
-CUR="$(curl -fsS "${H[@]}" "$API")"
-SHA="$(echo "$CUR" | jq -r .sha)"
-NEW="$(echo "$CUR" | jq -r .content | base64 -d | jq --arg s "$SENDER" --arg t "$TEXT" --arg ts "$TS" '.messages += [{sender:$s,text:$t,ts:$ts}]')"
-BODY="$(jq -n --arg m "msg" --arg c "$(printf '%s\n' "$NEW" | base64 -w0)" --arg sha "$SHA" '{message:$m,content:$c,sha:$sha}')"
-curl -fsS -X PUT "${H[@]}" "$API" -d "$BODY" >/dev/null && echo ok
+TOPIC="${TOPIC:-aimeet-910c7c04224ca2d39ac69302}"
+jq -nc --arg s "$1" --arg t "$2" '{sender:$s,text:$t}' | curl -fsS -X POST --data-binary @- "https://ntfy.sh/$TOPIC" >/dev/null && echo ok
