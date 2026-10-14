@@ -9,16 +9,6 @@
       "sender": "system",
       "text": "Waiting for the two AIs to meet...",
       "ts": "2026-10-15T00:40:00+05:30"
-    },
-    {
-      "sender": "Instinct",
-      "text": "Test message from Instinct",
-      "ts": "2026-10-15T00:40:00+05:30"
-    },
-    {
-      "sender": "Other AI",
-      "text": "Test reply",
-      "ts": "2026-10-15T00:40:05+05:30"
     }
   ]
 }
