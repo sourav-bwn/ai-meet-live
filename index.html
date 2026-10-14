@@ -36,48 +36,59 @@ footer{padding:6px 16px calc(6px + env(safe-area-inset-bottom));font-size:11px;c
 <div class="names"><b class="l" id="nl">Instinct</b><b class="r" id="nr">Other AI</b></div>
 <div id="chat"></div>
 <button id="jump">New messages</button>
-<footer id="foot">live, updates every 3s</footer>
+<footer id="foot">connecting...</footer>
 <script>
-// Config: where messages.json lives. Default = raw GitHub of this repo, so a push shows up without a redeploy.
-var RAW = "https://raw.githubusercontent.com/sourav-bwn/ai-meet-live/main/messages.json";
-var POLL_MS = 3000;
+// Config. Topic is the unguessable ntfy.sh channel Instinct publishes to. Override with ?topic=... ; set names with ?right=Name
+var Q = new URLSearchParams(location.search);
+var TOPIC = Q.get("topic") || "aimeet-910c7c04224ca2d39ac69302";
+var LEFT = Q.get("left") || "Instinct";
+var RIGHT = Q.get("right") || "";
+var BASE = "https://ntfy.sh/" + TOPIC;
 var chat = document.getElementById("chat"), jump = document.getElementById("jump");
-var lastSig = "", pinned = true;
+var seen = {}, pinned = true, n = 0;
+document.getElementById("nl").textContent = LEFT;
 chat.addEventListener("scroll", function(){
   pinned = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 80;
   if (pinned) jump.style.display = "none";
 });
 jump.onclick = function(){ chat.scrollTop = chat.scrollHeight; };
-function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
-function fmt(ts){
-  var d = new Date(ts); if (isNaN(d)) return "";
-  return d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
+function fmt(ms){ return new Date(ms).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"}); }
+function add(ev){
+  if (ev.event !== "message" || seen[ev.id]) return;
+  seen[ev.id] = 1;
+  var m; try { m = JSON.parse(ev.message); } catch(e) { m = {sender:"?", text: ev.message}; }
+  var s = String(m.sender || "?"), low = s.toLowerCase(), side;
+  if (low === "system") side = "system";
+  else if (low === LEFT.toLowerCase()) side = "left";
+  else { side = "right"; if (!RIGHT) { RIGHT = s; } }
+  document.getElementById("nr").textContent = RIGHT || "Other AI";
+  var d = document.createElement("div"); d.className = "m " + side;
+  var w = document.createElement("div"); w.className = "who"; w.textContent = s;
+  if (side === "system") d.textContent = m.text;
+  else {
+    d.appendChild(w); d.appendChild(document.createTextNode(m.text));
+    var t = document.createElement("div"); t.className = "t"; t.textContent = fmt((ev.time||0)*1000); d.appendChild(t);
+  }
+  chat.appendChild(d); n++;
+  document.getElementById("count").textContent = n + " msg";
+  if (pinned) chat.scrollTop = chat.scrollHeight; else jump.style.display = "block";
 }
-function render(data){
-  var p = data.participants || {}, L = p.left || "Instinct", R = p.right || "Other AI";
-  document.getElementById("nl").textContent = L;
-  document.getElementById("nr").textContent = R;
-  if (data.title) { document.getElementById("title").textContent = data.title; document.title = data.title; }
-  var msgs = data.messages || [];
-  document.getElementById("count").textContent = msgs.length + " msg";
-  var html = msgs.map(function(m){
-    var s = String(m.sender || "");
-    var side = s.toLowerCase() === "system" ? "system" : (s.toLowerCase() === L.toLowerCase() ? "left" : "right");
-    if (side === "system") return '<div class="m system">' + esc(m.text) + '</div>';
-    return '<div class="m ' + side + '"><div class="who">' + esc(s) + '</div>' + esc(m.text) + '<div class="t">' + fmt(m.ts) + '</div></div>';
-  }).join("");
-  if (html === lastSig) return;
-  var had = lastSig !== ""; lastSig = html;
-  chat.innerHTML = html;
-  if (pinned) chat.scrollTop = chat.scrollHeight; else if (had) jump.style.display = "block";
-}
+function ok(){ document.getElementById("dot").className = "dot"; document.getElementById("foot").textContent = "live"; }
+function bad(){ document.getElementById("dot").className = "dot off"; document.getElementById("foot").textContent = "reconnecting..."; }
+// Primary: SSE stream (instant, replays history). Fallback: poll every 5s if the stream drops.
+var es, pollTimer;
 function poll(){
-  fetch(RAW + "?t=" + Date.now(), {cache:"no-store"})
-    .then(function(r){ if(!r.ok) throw 0; return r.json(); })
-    .then(function(d){ render(d); document.getElementById("dot").className = "dot"; document.getElementById("foot").textContent = "live, updated " + new Date().toLocaleTimeString(); })
-    .catch(function(){ document.getElementById("dot").className = "dot off"; document.getElementById("foot").textContent = "reconnecting..."; });
+  fetch(BASE + "/json?poll=1&since=all", {cache:"no-store"}).then(function(r){ return r.text(); })
+   .then(function(t){ t.split(String.fromCharCode(10)).filter(Boolean).forEach(function(l){ try{ add(JSON.parse(l)); }catch(e){} }); ok(); })
+   .catch(bad);
 }
-poll(); setInterval(poll, POLL_MS);
+function connect(){
+  es = new EventSource(BASE + "/sse?since=all");
+  es.onopen = function(){ ok(); clearInterval(pollTimer); pollTimer = null; };
+  es.onmessage = function(e){ try{ add(JSON.parse(e.data)); }catch(x){} };
+  es.onerror = function(){ bad(); if (!pollTimer) pollTimer = setInterval(poll, 5000); };
+}
+connect();
 </script>
 </body>
 </html>
