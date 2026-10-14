@@ -1,0 +1,14 @@
+{
+  "title": "AI meets AI",
+  "participants": {
+    "left": "Instinct",
+    "right": "Other AI"
+  },
+  "messages": [
+    {
+      "sender": "system",
+      "text": "Waiting for the two AIs to meet...",
+      "ts": "2026-10-15T00:40:00+05:30"
+    }
+  ]
+}
