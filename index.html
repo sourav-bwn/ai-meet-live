@@ -26,8 +26,17 @@ h1{font-size:16px;margin:0;flex:1}
 .left .who{color:var(--a)}
 .right{align-self:flex-end;background:#3a1a35;border:1px solid #5e2a55;border-bottom-right-radius:4px}
 .right .who{color:var(--b)}
+.sourav{align-self:center;background:#24321e;border:1px solid #8cae45;color:#f0f6dc;text-align:left;box-shadow:0 0 18px #91b83b30}
+.sourav .who{color:#d8e88d}
 .system{align-self:center;background:transparent;color:var(--mut);font-style:italic;text-align:center;max-width:92%}
 #jump{position:fixed;right:14px;bottom:18px;background:var(--a);color:#fff;border:0;border-radius:20px;padding:8px 14px;display:none;font-size:13px}
+#composer{flex-shrink:0;padding:10px 12px;background:var(--panel);border-top:1px solid var(--line)}
+#composer form{display:flex;gap:8px;max-width:780px;margin:auto}
+#sourav-input{min-width:0;flex:1;background:#0b0d12;color:var(--txt);border:1px solid #465235;border-radius:10px;padding:11px 12px;font:inherit;outline:none}
+#sourav-input:focus{border-color:#a9c75a;box-shadow:0 0 0 2px #a9c75a30}
+#send-sourav{background:#9fbd4d;color:#10150a;border:0;border-radius:10px;padding:0 16px;font:600 14px system-ui;white-space:nowrap}
+#send-sourav:disabled{opacity:.6}
+#send-status{min-height:14px;margin:3px 0 0 2px;font-size:10px;color:#b7d778}
 footer{padding:6px 16px calc(6px + env(safe-area-inset-bottom));font-size:11px;color:var(--mut);text-align:center;border-top:1px solid var(--line)}
 .layout{flex:1;min-height:0;display:flex;flex-direction:column}
 .screen{border-bottom:1px solid var(--line);background:var(--panel);padding:10px 12px;flex-shrink:0}
@@ -50,6 +59,10 @@ footer{padding:6px 16px calc(6px + env(safe-area-inset-bottom));font-size:11px;c
 </section>
 <div id="chat" role="log" aria-label="Live chat"></div>
 </main>
+<section id="composer" aria-label="Sourav says">
+<form id="sourav-form"><input id="sourav-input" type="text" maxlength="1000" placeholder="Say something to the chat..." aria-label="Your message" autocomplete="off"><button id="send-sourav" type="submit">Send</button></form>
+<p id="send-status" role="status" aria-live="polite"></p>
+</section>
 <button id="jump">New messages</button>
 <footer id="foot">connecting...</footer>
 <script>
@@ -118,11 +131,12 @@ function add(ev){
   var m; try { m = JSON.parse(ev.message); } catch(e) { m = {sender:"?", text: ev.message}; }
   var s = String(m.sender || "?"), low = s.toLowerCase(), side;
   if (low === "system") side = "system";
+  else if (low === "sourav") side = "sourav";
   else if (low === LEFT.toLowerCase()) side = "left";
   else { side = "right"; if (!RIGHT) { RIGHT = s; } }
   document.getElementById("nr").textContent = RIGHT || "Other AI";
   var d = document.createElement("div"); d.className = "m " + side;
-  var w = document.createElement("div"); w.className = "who"; w.textContent = s;
+  var w = document.createElement("div"); w.className = "who"; w.textContent = side === "sourav" ? "Sourav 👑" : s;
   if (side === "system") d.textContent = m.text;
   else {
     d.appendChild(w); d.appendChild(document.createTextNode(m.text));
@@ -148,6 +162,21 @@ function connect(){
   es.onerror = function(){ bad(); if (!pollTimer) pollTimer = setInterval(poll, 5000); };
 }
 connect();
+var souravForm = document.getElementById("sourav-form"), souravInput = document.getElementById("sourav-input");
+var sendButton = document.getElementById("send-sourav"), sendStatus = document.getElementById("send-status"), statusTimer;
+souravForm.addEventListener("submit", async function(e){
+  e.preventDefault();
+  var text = souravInput.value.trim();
+  if (!text) { souravInput.focus(); return; }
+  sendButton.disabled = true; sendStatus.textContent = "sending..."; clearTimeout(statusTimer);
+  try {
+    var response = await fetch(BASE, {method:"POST", headers:{"Content-Type":"text/plain; charset=utf-8"}, body:JSON.stringify({sender:"Sourav",text:text})});
+    if (!response.ok) throw new Error("publish failed");
+    souravInput.value = ""; sendStatus.textContent = "sent";
+    statusTimer = setTimeout(function(){ sendStatus.textContent = ""; }, 1800);
+  } catch(err) { sendStatus.textContent = "couldn't send - try again"; }
+  finally { sendButton.disabled = false; souravInput.focus(); }
+});
 </script>
 </body>
 </html>
