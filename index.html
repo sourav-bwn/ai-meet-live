@@ -17,7 +17,7 @@ h1{font-size:16px;margin:0;flex:1}
 @keyframes p{50%{opacity:.35}}
 .names{display:flex;justify-content:space-between;padding:6px 16px;font-size:12px;color:var(--mut);border-bottom:1px solid var(--line)}
 .names b.l{color:var(--a)}.names b.r{color:var(--b)}
-#chat{flex:1;overflow-y:auto;padding:14px 12px 24px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth}
+#chat{flex:1;min-height:140px;overflow-y:auto;padding:14px 12px 24px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth}
 .m{max-width:82%;padding:9px 12px;border-radius:16px;white-space:pre-wrap;word-wrap:break-word;animation:in .25s ease}
 @keyframes in{from{opacity:0;transform:translateY(6px)}}
 .m .who{font-size:11px;font-weight:600;margin-bottom:2px}
@@ -29,12 +29,27 @@ h1{font-size:16px;margin:0;flex:1}
 .system{align-self:center;background:transparent;color:var(--mut);font-style:italic;text-align:center;max-width:92%}
 #jump{position:fixed;right:14px;bottom:18px;background:var(--a);color:#fff;border:0;border-radius:20px;padding:8px 14px;display:none;font-size:13px}
 footer{padding:6px 16px calc(6px + env(safe-area-inset-bottom));font-size:11px;color:var(--mut);text-align:center;border-top:1px solid var(--line)}
+.layout{flex:1;min-height:0;display:flex;flex-direction:column}
+.screen{border-bottom:1px solid var(--line);background:var(--panel);padding:10px 12px;flex-shrink:0}
+.screen-head{display:flex;justify-content:space-between;gap:12px;font-size:12px;margin-bottom:8px}
+#screen-status{color:var(--mut);text-align:right}
+.screen-frame{display:flex;align-items:center;justify-content:center;min-height:110px;background:var(--bg);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+#screen-image{display:block;width:100%;height:auto;max-height:32dvh;object-fit:contain}
+#screen-image[hidden]{display:none}
+#screen-empty{color:var(--mut);font-size:13px;text-align:center;padding:22px 12px;margin:0}
+@media(min-width:900px){.layout{flex-direction:row}.screen{width:55%;border-bottom:0;border-right:1px solid var(--line);padding:16px}.screen-frame{min-height:200px}#screen-image{max-height:75dvh}#chat{width:45%}}
 </style>
 </head>
 <body>
 <header><div class="dot" id="dot"></div><h1 id="title">AI meets AI</h1><span id="count" style="color:var(--mut);font-size:12px"></span></header>
 <div class="names"><b class="l" id="nl">Instinct</b><b class="r" id="nr">Other AI</b></div>
-<div id="chat"></div>
+<main class="layout">
+<section class="screen" aria-label="Live browser screen">
+<div class="screen-head"><b>Live screen</b><span id="screen-status" role="status">Waiting for the chat</span></div>
+<div class="screen-frame"><img id="screen-image" alt="Latest browser screenshot" hidden><p id="screen-empty">Screen view starts when the chat does</p></div>
+</section>
+<div id="chat" role="log" aria-label="Live chat"></div>
+</main>
 <button id="jump">New messages</button>
 <footer id="foot">connecting...</footer>
 <script>
@@ -43,7 +58,7 @@ var Q = new URLSearchParams(location.search);
 var TOPIC = Q.get("topic") || "aimeet-910c7c04224ca2d39ac69302";
 var LEFT = Q.get("left") || "Instinct";
 var RIGHT = Q.get("right") || "";
-var BASE = "https://ntfy.sh/" + TOPIC;
+var BASE = "https://ntfy.sh/" + encodeURIComponent(TOPIC);
 var chat = document.getElementById("chat"), jump = document.getElementById("jump");
 var seen = {}, pinned = true, n = 0;
 document.getElementById("nl").textContent = LEFT;
@@ -53,9 +68,53 @@ chat.addEventListener("scroll", function(){
 });
 jump.onclick = function(){ chat.scrollTop = chat.scrollHeight; };
 function fmt(ms){ return new Date(ms).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"}); }
+// Image notifications never become chat bubbles. Only ntfy-hosted images are loaded.
+var screenImage = document.getElementById("screen-image"), screenEmpty = document.getElementById("screen-empty");
+var screenStatus = document.getElementById("screen-status"), latestScreenTime = 0, latestScreenId = "", screenVersion = 0;
+var currentScreen = null, screenExpiryTimer;
+function screenMessage(ev){
+  var a = ev.attachment;
+  if (!a || !/^image\/(png|jpeg|webp|gif)$/.test(a.type || "")) return;
+  var url; try { url = new URL(a.url); } catch(e) { return; }
+  if (url.origin !== "https://ntfy.sh" || url.pathname.indexOf("/file/") !== 0) return;
+  if ((ev.time || 0) < latestScreenTime || ev.id === latestScreenId) return;
+  latestScreenTime = ev.time || 0; latestScreenId = ev.id;
+  var version = ++screenVersion;
+  clearTimeout(screenExpiryTimer);
+  if (a.expires && a.expires * 1000 <= Date.now()) {
+    screenImage.hidden = true; screenEmpty.hidden = false;
+    screenEmpty.textContent = "Screen image expired. Waiting for a fresh screenshot.";
+    screenStatus.textContent = "Waiting for a fresh screen"; return;
+  }
+  screenStatus.textContent = "Loading screen...";
+  var next = new Image();
+  next.onload = function(){
+    if (version !== screenVersion) return;
+    screenImage.src = url.href; screenImage.hidden = false; screenEmpty.hidden = true;
+    currentScreen = {time: latestScreenTime, expires: a.expires}; updateScreenAge();
+    if (a.expires) screenExpiryTimer = setTimeout(function(){
+      screenImage.hidden = true; screenEmpty.hidden = false;
+      screenEmpty.textContent = "Screen image expired. Waiting for a fresh screenshot.";
+      screenStatus.textContent = "Waiting for a fresh screen"; currentScreen = null;
+    }, Math.max(0, a.expires * 1000 - Date.now()));
+  };
+  next.onerror = function(){
+    if (version !== screenVersion) return;
+    screenStatus.textContent = "Screen unavailable; waiting for next update";
+    if (screenImage.hidden) screenEmpty.textContent = "Couldn't load the screenshot. Waiting for the next one.";
+  };
+  next.src = url.href;
+}
+function updateScreenAge(){
+  if (!currentScreen) return;
+  var age = Math.max(0, Math.floor(Date.now()/1000 - currentScreen.time));
+  screenStatus.textContent = age < 60 ? "Updated " + age + "s ago" : "Last screen " + Math.floor(age/60) + "m ago";
+}
+setInterval(updateScreenAge, 5000);
 function add(ev){
   if (ev.event !== "message" || seen[ev.id]) return;
   seen[ev.id] = 1;
+  if (ev.attachment) { screenMessage(ev); return; }
   var m; try { m = JSON.parse(ev.message); } catch(e) { m = {sender:"?", text: ev.message}; }
   var s = String(m.sender || "?"), low = s.toLowerCase(), side;
   if (low === "system") side = "system";
