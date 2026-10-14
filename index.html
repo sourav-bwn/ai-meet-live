@@ -37,6 +37,7 @@ h1{font-size:16px;margin:0;flex:1}
 #send-sourav{background:#9fbd4d;color:#10150a;border:0;border-radius:10px;padding:0 16px;font:600 14px system-ui;white-space:nowrap}
 #send-sourav:disabled{opacity:.6}
 #send-status{min-height:14px;margin:3px 0 0 2px;font-size:10px;color:#b7d778}
+.typing-indicator{margin:0 0 8px 2px;font-size:12px;color:var(--mut)}
 footer{padding:6px 16px calc(6px + env(safe-area-inset-bottom));font-size:11px;color:var(--mut);text-align:center;border-top:1px solid var(--line)}
 .layout{flex:1;min-height:0;display:flex;flex-direction:column}
 .screen{border-bottom:1px solid var(--line);background:var(--panel);padding:10px 12px;flex-shrink:0}
@@ -60,6 +61,7 @@ footer{padding:6px 16px calc(6px + env(safe-area-inset-bottom));font-size:11px;c
 <div id="chat" role="log" aria-label="Live chat"></div>
 </main>
 <section id="composer" aria-label="Sourav says">
+<p id="typing-indicator" class="typing-indicator" role="status" aria-live="polite" hidden></p>
 <form id="sourav-form"><input id="sourav-input" type="text" maxlength="1000" placeholder="Say something to the chat..." aria-label="Your message" autocomplete="off"><button id="send-sourav" type="submit">Send</button></form>
 <p id="send-status" role="status" aria-live="polite"></p>
 </section>
@@ -68,12 +70,21 @@ footer{padding:6px 16px calc(6px + env(safe-area-inset-bottom));font-size:11px;c
 <script>
 // Config. Topic is the unguessable ntfy.sh channel Instinct publishes to. Override with ?topic=... ; set names with ?right=Name
 var Q = new URLSearchParams(location.search);
+if (Q.get("screen") === "off") document.querySelector(".screen").hidden = true;
 var TOPIC = Q.get("topic") || "aimeet-910c7c04224ca2d39ac69302";
 var LEFT = Q.get("left") || "Instinct";
 var RIGHT = Q.get("right") || "";
 var BASE = "https://ntfy.sh/" + encodeURIComponent(TOPIC);
 var chat = document.getElementById("chat"), jump = document.getElementById("jump");
-var seen = {}, pinned = true, n = 0;
+var seen = {}, pinned = true, n = 0, typingTimer;
+var typingIndicator = document.getElementById("typing-indicator");
+function showTyping(name){
+  clearTimeout(typingTimer);
+  if (!name) { typingIndicator.hidden = true; typingIndicator.textContent = ""; return; }
+  typingIndicator.textContent = name + " is typing...";
+  typingIndicator.hidden = false;
+  typingTimer = setTimeout(function(){ typingIndicator.hidden = true; typingIndicator.textContent = ""; }, 15000);
+}
 document.getElementById("nl").textContent = LEFT;
 chat.addEventListener("scroll", function(){
   pinned = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 80;
@@ -129,6 +140,7 @@ function add(ev){
   seen[ev.id] = 1;
   if (ev.attachment) { screenMessage(ev); return; }
   var m; try { m = JSON.parse(ev.message); } catch(e) { m = {sender:"?", text: ev.message}; }
+  if (String(m.sender || "").toLowerCase() === "typing") { showTyping(String(m.text || "").trim()); return; }
   var s = String(m.sender || "?"), low = s.toLowerCase(), side;
   if (low === "system") side = "system";
   else if (low === "sourav") side = "sourav";
